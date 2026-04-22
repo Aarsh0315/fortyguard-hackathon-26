@@ -1,0 +1,13 @@
+facility_id,name,type,vulnerable_population,latitude,longitude
+F01,Horace Mann Elementary School,School,410,37.3395,-121.8900
+F02,Downtown Community Daycare,Daycare,85,37.3385,-121.8920
+F03,San Jose Senior Center,Senior Center,220,37.3370,-121.8910
+F04,Santa Clara County Health Clinic,Clinic,380,37.3415,-121.8880
+F05,Martin Luther King Jr. Library,Library,140,37.3353,-121.8855
+F06,Downtown Pediatric Clinic,Clinic,260,37.3360,-121.8830
+F07,Playhouse Preschool,Daycare,65,37.3395,-121.8885
+F08,Valley Nursing Home,Eldercare,180,37.3330,-121.8895
+F09,Roosevelt Community Center,Community Center,320,37.3425,-121.8870
+F10,Lincoln Elementary,School,540,37.3310,-121.8875
+F11,Almaden After-School Program,After-School,95,37.3340,-121.8920
+F12,San Pedro Health Center,Clinic,220,37.3400,-121.8935

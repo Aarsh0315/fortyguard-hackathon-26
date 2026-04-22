@@ -22,11 +22,16 @@ All analysis endpoints are asynchronous: you submit a request, get an `activity_
 
 ### Use-case notebooks
 
-Once you've completed `00_setup.ipynb`, jump to a narrative walkthrough that shows how the endpoints combine to solve a real problem end-to-end:
+Once you've completed `00_setup.ipynb`, jump into a narrative workflow that combines **your own data** with FortyGuard layers to produce a ranked, defensible action list. See [`notebooks/use_cases/`](notebooks/use_cases/README.md) for the full index. The four available today:
 
-- [**Building envelope engineer** — pre-design thermal assessment for a commercial office tower](notebooks/use_cases/building_envelope_engineer.ipynb)
+| Persona / industry | Your data | Output |
+|-------------------|-----------|--------|
+| [Urban planner — bus-stop cooling](notebooks/use_cases/urban_planner_bus_stop_prioritization.ipynb) | Bus-stop points | Ranked intervention list |
+| [Real-estate portfolio heat risk](notebooks/use_cases/real_estate_portfolio_heat_risk.ipynb) | Property portfolio | Risk-tiered table with per-asset OpEx uplift |
+| [Public-health vulnerable facilities](notebooks/use_cases/public_health_vulnerable_facilities.ipynb) | Facilities + vulnerability counts | Exposure-weighted priority + action list |
+| [Urban forestry tree prioritization](notebooks/use_cases/urban_forestry_tree_prioritization.ipynb) | Existing trees + candidate planting sites | Planting priority score per candidate |
 
-Each use-case notebook frames the work as an engineering workflow (what you're doing, why it matters, what the numbers unlock), not just a catalog of API calls.
+Each notebook ships with sample data in `data/` — drop in your own CSV with matching columns and everything downstream works.
 
 ---
 
@@ -148,14 +153,22 @@ temperature-api-quickstart/
 │   ├── client.py            # FortyGuardClient — one method per endpoint
 │   ├── exceptions.py        # FortyGuardError, TaskFailedError, TaskTimeoutError
 │   └── samples.py           # sample polygons and points for demos
-└── notebooks/               # numbered, run top-to-bottom
-    ├── 00_setup.ipynb
-    ├── 01_create_heatmap.ipynb
-    ├── 02_environmental_parameters.ipynb
-    ├── 03_satellite_segmentation.ipynb
-    ├── 04_street_view_segmentation.ipynb
-    ├── 05_heat_intelligence_report.ipynb
-    └── 06_credits_usage.ipynb
+├── data/                    # sample user datasets for the use-case notebooks
+│   ├── sample_bus_stops.csv
+│   ├── sample_real_estate_portfolio.csv
+│   ├── sample_public_facilities.csv
+│   ├── sample_existing_trees.csv
+│   └── sample_candidate_planting_sites.csv
+├── outputs/                 # generated artifacts (PDFs, action-list CSVs) — gitignored
+└── notebooks/
+    ├── 00_setup.ipynb                     # endpoint reference — run first
+    ├── 01_create_heatmap.ipynb ... 06_credits_usage.ipynb
+    └── use_cases/                         # narrative workflows (user data × our layers)
+        ├── README.md
+        ├── urban_planner_bus_stop_prioritization.ipynb
+        ├── real_estate_portfolio_heat_risk.ipynb
+        ├── public_health_vulnerable_facilities.ipynb
+        └── urban_forestry_tree_prioritization.ipynb
 ```
 
 ---

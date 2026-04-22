@@ -1,0 +1,13 @@
+site_id,block,available_pit_size,latitude,longitude
+S01,Santa Clara St median,large,37.3385,-121.8890
+S02,San Fernando St curb,small,37.3360,-121.8875
+S03,San Pedro Plaza expansion,large,37.3378,-121.8935
+S04,Market St block,medium,37.3378,-121.8915
+S05,Julian St reconstruction,large,37.3440,-121.8895
+S06,San Carlos & 2nd,medium,37.3345,-121.8875
+S07,Paseo & 1st,small,37.3365,-121.8895
+S08,Almaden & San Fernando,medium,37.3358,-121.8925
+S09,St. James Park edge,large,37.3400,-121.8870
+S10,4th & San Carlos,medium,37.3348,-121.8858
+S11,Guadalupe River Trail entry,large,37.3370,-121.8945
+S12,Japantown gateway,medium,37.3445,-121.8920
