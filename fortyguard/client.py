@@ -1,0 +1,394 @@
+"""Python client for the FortyGuard tOS Enterprise API.
+
+One method per endpoint. All analysis endpoints are async task-based —
+the `_submit_and_wait` helper handles polling so notebook users don't have to.
+"""
+
+from __future__ import annotations
+
+import os
+import time
+from pathlib import Path
+from typing import Any, Iterable
+
+import requests
+
+from .exceptions import FortyGuardError, TaskFailedError, TaskTimeoutError
+
+DEFAULT_BASE_URL = "https://api.fortyguard.com"
+_TERMINAL_SUCCESS = {"succeeded", "completed"}
+_TERMINAL_FAILURE = {"failed", "error"}
+
+
+class FortyGuardClient:
+    """Thin wrapper around the tOS Enterprise API.
+
+    Parameters
+    ----------
+    api_key:
+        FortyGuard API key. Falls back to the ``FORTYGUARD_API_KEY`` env var.
+    base_url:
+        API root. Falls back to ``FORTYGUARD_BASE_URL`` then the prod default.
+    timeout:
+        Per-request HTTP timeout in seconds.
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        timeout: float = 60.0,
+    ) -> None:
+        self.api_key = api_key or os.getenv("FORTYGUARD_API_KEY")
+        if not self.api_key:
+            raise FortyGuardError(
+                "No API key provided. Pass api_key=... or set FORTYGUARD_API_KEY in your .env file."
+            )
+        self.base_url = (base_url or os.getenv("FORTYGUARD_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+        self.timeout = timeout
+        self._session = requests.Session()
+        self._session.headers.update(
+            {"api-key": self.api_key, "Content-Type": "application/json"}
+        )
+
+    # ------------------------------------------------------------------ core
+
+    def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
+        url = f"{self.base_url}{path}"
+        kwargs.setdefault("timeout", self.timeout)
+        resp = self._session.request(method, url, **kwargs)
+        if not resp.ok:
+            raise FortyGuardError(
+                f"{method} {path} -> {resp.status_code}: {resp.text[:500]}"
+            )
+        return resp
+
+    def _submit(self, path: str, payload: dict) -> str:
+        body = self._request("POST", path, json=payload).json()
+        if body.get("error"):
+            raise FortyGuardError(body.get("message", "Submission failed"))
+        try:
+            return body["data"]["activity_id"]
+        except KeyError as exc:
+            raise FortyGuardError(f"Unexpected response shape: {body}") from exc
+
+    def get_status(self, activity_id: str) -> dict:
+        """Return the raw status-endpoint JSON for an activity."""
+        body = self._request("GET", f"/v1/status/{activity_id}").json()
+        if body.get("error"):
+            raise FortyGuardError(body.get("message", "Status lookup failed"))
+        return body["data"]
+
+    def wait_for(
+        self,
+        activity_id: str,
+        poll_interval: float = 3.0,
+        timeout: float = 600.0,
+        on_tick: callable | None = None,
+    ) -> dict:
+        """Poll the status endpoint until the task terminates.
+
+        Returns the ``result`` payload on success. Raises on failure or timeout.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            data = self.get_status(activity_id)
+            status = str(data.get("status", "")).lower()
+            if on_tick:
+                on_tick(status, data)
+            if status in _TERMINAL_SUCCESS:
+                return data.get("result", data)
+            if status in _TERMINAL_FAILURE:
+                raise TaskFailedError(
+                    f"Activity {activity_id} failed: {data.get('message') or data}"
+                )
+            if time.monotonic() >= deadline:
+                raise TaskTimeoutError(
+                    f"Activity {activity_id} still '{status}' after {timeout:.0f}s"
+                )
+            time.sleep(poll_interval)
+
+    def _submit_and_wait(
+        self,
+        path: str,
+        payload: dict,
+        *,
+        poll_interval: float,
+        timeout: float,
+        verbose: bool,
+    ) -> dict:
+        activity_id = self._submit(path, payload)
+        if verbose:
+            print(f"Submitted -> activity_id={activity_id}")
+
+        def _tick(status: str, _data: dict) -> None:
+            if verbose:
+                print(f"  status: {status}")
+
+        result = self.wait_for(
+            activity_id,
+            poll_interval=poll_interval,
+            timeout=timeout,
+            on_tick=_tick if verbose else None,
+        )
+        if verbose:
+            print("Done.")
+        return {"activity_id": activity_id, "result": result}
+
+    # ---------------------------------------------------------- analysis API
+
+    def create_heatmap(
+        self,
+        polygon_aoi: dict,
+        start_date: str,
+        filter_type: int,
+        granularity: int = 100,
+        start_time: str | None = None,
+        end_time: str | None = None,
+        end_date: str | None = None,
+        *,
+        wait: bool = True,
+        poll_interval: float = 3.0,
+        timeout: float = 600.0,
+        verbose: bool = True,
+    ) -> dict | str:
+        """POST /v1/heatmap — generate a thermal map over a polygon AOI.
+
+        ``filter_type``: 1=single hour, 2=range of hours, 3=single day.
+        ``granularity``: spatial resolution in meters (60, 80, or 100).
+        """
+        date_time: dict[str, Any] = {"start_date": start_date, "filter_type": filter_type}
+        if start_time is not None:
+            date_time["start_time"] = start_time
+        if end_time is not None:
+            date_time["end_time"] = end_time
+        if end_date is not None:
+            date_time["end_date"] = end_date
+
+        payload = {
+            "polygon_aoi": polygon_aoi,
+            "date_time": date_time,
+            "granularity": granularity,
+        }
+        if not wait:
+            return self._submit("/v1/heatmap", payload)
+        return self._submit_and_wait(
+            "/v1/heatmap", payload,
+            poll_interval=poll_interval, timeout=timeout, verbose=verbose,
+        )
+
+    def satellite_segmentation(
+        self,
+        latitude: float,
+        longitude: float,
+        start_date: str,
+        filter_type: int,
+        granularity: int = 80,
+        start_time: str | None = None,
+        end_time: str | None = None,
+        end_date: str | None = None,
+        *,
+        wait: bool = True,
+        poll_interval: float = 3.0,
+        timeout: float = 600.0,
+        verbose: bool = True,
+    ) -> dict | str:
+        """POST /v1/satellite — land-cover segmentation of a satellite tile (Premium)."""
+        date_time: dict[str, Any] = {"start_date": start_date, "filter_type": filter_type}
+        if start_time is not None:
+            date_time["start_time"] = start_time
+        if end_time is not None:
+            date_time["end_time"] = end_time
+        if end_date is not None:
+            date_time["end_date"] = end_date
+
+        payload = {
+            "sat": {"latitude": latitude, "longitude": longitude},
+            "date_time": date_time,
+            "granularity": granularity,
+        }
+        if not wait:
+            return self._submit("/v1/satellite", payload)
+        return self._submit_and_wait(
+            "/v1/satellite", payload,
+            poll_interval=poll_interval, timeout=timeout, verbose=verbose,
+        )
+
+    def street_view_segmentation(
+        self,
+        latitude: float,
+        longitude: float,
+        vertical_angle: float = 0.0,
+        horizontal_angle: float = 0.0,
+        back_view: bool = False,
+        *,
+        wait: bool = True,
+        poll_interval: float = 3.0,
+        timeout: float = 600.0,
+        verbose: bool = True,
+    ) -> dict | str:
+        """POST /v1/streetview — segmentation of a ground-level street view (Premium)."""
+        payload = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "vertical_angle": vertical_angle,
+            "horizontal_angle": horizontal_angle,
+            "back_view": back_view,
+        }
+        if not wait:
+            return self._submit("/v1/streetview", payload)
+        return self._submit_and_wait(
+            "/v1/streetview", payload,
+            poll_interval=poll_interval, timeout=timeout, verbose=verbose,
+        )
+
+    def environmental_parameters(
+        self,
+        latitude: float,
+        longitude: float,
+        temperature: float,
+        start_date: str,
+        filter_type: int,
+        start_time: str | None = None,
+        end_time: str | None = None,
+        end_date: str | None = None,
+        *,
+        wait: bool = True,
+        poll_interval: float = 3.0,
+        timeout: float = 600.0,
+        verbose: bool = True,
+    ) -> dict | str:
+        """POST /v1/env_params — heat index, AQI, solar irradiance, and more."""
+        date_time: dict[str, Any] = {"start_date": start_date, "filter_type": filter_type}
+        if start_time is not None:
+            date_time["start_time"] = start_time
+        if end_time is not None:
+            date_time["end_time"] = end_time
+        if end_date is not None:
+            date_time["end_date"] = end_date
+
+        payload = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "temperature": temperature,
+            "date_time": date_time,
+        }
+        if not wait:
+            return self._submit("/v1/env_params", payload)
+        return self._submit_and_wait(
+            "/v1/env_params", payload,
+            poll_interval=poll_interval, timeout=timeout, verbose=verbose,
+        )
+
+    # ---------------------------------------------------- heat intelligence
+
+    _HEAT_INTEL_ANALYSES: tuple[str, ...] = (
+        "geographic", "environmental", "urban", "events", "anthropogenic",
+    )
+
+    def heat_intelligence(
+        self,
+        latitude: float,
+        longitude: float,
+        temperature: float,
+        date: str,
+        analysis: Iterable[str] = ("environmental",),
+        output_path: str | Path | None = None,
+        *,
+        poll_interval: float = 5.0,
+        timeout: float = 900.0,
+        verbose: bool = True,
+    ) -> Path:
+        """POST /v1/heat_intelligence — generate a PDF heat-intelligence report.
+
+        This endpoint always waits for completion because the final status
+        response streams a PDF directly. The file is written to ``output_path``
+        (default: ``./outputs/heat_intelligence_<activity_id>.pdf``).
+        """
+        analysis_list = list(analysis)
+        unknown = set(analysis_list) - set(self._HEAT_INTEL_ANALYSES)
+        if unknown:
+            raise ValueError(
+                f"Unknown analysis types {unknown}. "
+                f"Valid options: {self._HEAT_INTEL_ANALYSES}"
+            )
+        payload = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "temperature": temperature,
+            "date": date,
+            "analysis": analysis_list,
+        }
+        activity_id = self._submit("/v1/heat_intelligence", payload)
+        if verbose:
+            print(f"Submitted -> activity_id={activity_id}")
+
+        deadline = time.monotonic() + timeout
+        url = f"{self.base_url}/v1/status/{activity_id}"
+        while True:
+            resp = self._session.get(url, stream=True, timeout=self.timeout)
+            if not resp.ok:
+                raise FortyGuardError(
+                    f"GET /v1/status/{activity_id} -> {resp.status_code}: {resp.text[:500]}"
+                )
+            content_type = resp.headers.get("Content-Type", "")
+            if "application/pdf" in content_type or "octet-stream" in content_type:
+                target = Path(output_path) if output_path else (
+                    Path("outputs") / f"heat_intelligence_{activity_id}.pdf"
+                )
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with target.open("wb") as fh:
+                    for chunk in resp.iter_content(chunk_size=65536):
+                        if chunk:
+                            fh.write(chunk)
+                if verbose:
+                    print(f"Saved report to {target}")
+                return target
+
+            body = resp.json()
+            resp.close()
+            if body.get("error"):
+                raise FortyGuardError(body.get("message", "Status lookup failed"))
+            status = str(body.get("data", {}).get("status", "")).lower()
+            if verbose:
+                print(f"  status: {status}")
+            if status in _TERMINAL_FAILURE:
+                raise TaskFailedError(f"Activity {activity_id} failed")
+            if time.monotonic() >= deadline:
+                raise TaskTimeoutError(
+                    f"Activity {activity_id} still '{status}' after {timeout:.0f}s"
+                )
+            time.sleep(poll_interval)
+
+    # ------------------------------------------------------------- credits
+
+    def fetch_api_key_usage(self) -> dict:
+        """POST /v1/system/fetch-api-key-usage — current billing cycle summary."""
+        body = self._request(
+            "POST",
+            "/v1/system/fetch-api-key-usage",
+            json={"api_key": self.api_key},
+        ).json()
+        return body
+
+    def fetch_api_key_custom_usage(self, start_date: str, end_date: str) -> dict:
+        """POST /v1/system/fetch-api-key-custom-usage — usage over a custom range.
+
+        ``start_date``/``end_date`` accept ``YYYY-MM-DD`` (we format to ISO)
+        or already-ISO strings (passed through).
+        """
+        def _to_iso(value: str, end_of_day: bool) -> str:
+            if "T" in value:
+                return value
+            return f"{value}T{'23:59:59' if end_of_day else '00:00:00'}Z"
+
+        body = self._request(
+            "POST",
+            "/v1/system/fetch-api-key-custom-usage",
+            json={
+                "api_key": self.api_key,
+                "start_date": _to_iso(start_date, end_of_day=False),
+                "end_date": _to_iso(end_date, end_of_day=True),
+            },
+        ).json()
+        return body
