@@ -1,0 +1,13 @@
+park_id,name,type,acres,latitude,longitude
+P01,Discovery Meadow Park,Regional,16.0,37.3320,-121.8910
+P02,Guadalupe River Linear Park,Regional,30.0,37.3360,-121.8980
+P03,St. James Park,Plaza,8.5,37.3398,-121.8895
+P04,Roosevelt Community Park,Neighborhood,11.4,37.3500,-121.8520
+P05,Backesto Park,Neighborhood,7.0,37.3525,-121.8970
+P06,Kelley Park,Regional,56.0,37.3220,-121.8800
+P07,Plata Arroyo Park,Neighborhood,9.2,37.3650,-121.8500
+P08,Columbus Park,Sports,21.0,37.3530,-121.9080
+P09,Willow Glen Park,Playground,3.6,37.3070,-121.9300
+P10,Berryessa Creek Park,Trail-head,6.4,37.3760,-121.8900
+P11,William Street Park,Neighborhood,14.5,37.3360,-121.8730
+P12,Welch Park,Dog-Park,4.2,37.3450,-121.8400

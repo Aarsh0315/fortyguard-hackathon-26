@@ -2,11 +2,21 @@
 
 A Python + Jupyter sandbox for the [FortyGuard tOS Enterprise API](https://api.fortyguard.com). Drop in your API key and run a notebook — you'll get a heatmap, a heat-intelligence PDF, or an environmental-parameter time series in minutes.
 
-The `fortyguard/` package wraps every endpoint the API exposes and handles the submit-then-poll pattern for you. The `notebooks/` folder walks you through each endpoint with runnable examples.
+The `fortyguard/` package wraps every endpoint the API exposes and handles the submit-then-poll pattern for you. The `notebooks/` folder walks you through each endpoint with runnable examples, and `notebooks/use_cases/` shows full narrative workflows that combine your own data with FortyGuard layers to produce a defensible action list.
+
+![San Jose AOI heatmap — daily mean vs. daily peak](docs/images/heatmap_visualized.png)
+
+*Above: the bundled 24-hour heatmap rendered tile-by-tile — daily mean (left) and daily peak (right) across ~16,500 tiles. The southeast urban heat island is exactly the kind of pattern the use-case notebooks pick up when they join your point list against this layer.*
+
+![AOI temperature distribution — heatmap summary](docs/images/heatmap_summary.png)
+
+*And the one-line summary card every use-case notebook prints right after loading the heatmap — min / mean / max swatches, a colored histogram of every tile's peak, and a continuous colorbar.*
 
 ---
 
 ## What you can do here
+
+### Endpoint walkthroughs
 
 | # | Notebook | Endpoint | Plan |
 |---|----------|----------|------|
@@ -16,22 +26,24 @@ The `fortyguard/` package wraps every endpoint the API exposes and handles the s
 | 03 | [Satellite segmentation](notebooks/03_satellite_segmentation.ipynb) | `POST /v1/satellite` | Premium |
 | 04 | [Street view segmentation](notebooks/04_street_view_segmentation.ipynb) | `POST /v1/streetview` | Premium |
 | 05 | [Heat intelligence report](notebooks/05_heat_intelligence_report.ipynb) | `POST /v1/heat_intelligence` | Premium |
-| 06 | [Credits & usage](notebooks/06_credits_usage.ipynb) | `POST /v1/system/fetch-api-key-*usage` | Both |
 
 All analysis endpoints are asynchronous: you submit a request, get an `activity_id`, and poll `GET /v1/status/{activity_id}` until the task finishes. The client does the polling for you — you just call `client.create_heatmap(...)` and get the result back.
 
 ### Use-case notebooks
 
-Once you've completed `00_setup.ipynb`, jump into a narrative workflow that combines **your own data** with FortyGuard layers to produce a ranked, defensible action list. See [`notebooks/use_cases/`](notebooks/use_cases/README.md) for the full index. The four available today:
+Once you've completed `00_setup.ipynb`, jump into a narrative workflow that combines **your own data** with FortyGuard layers to produce a ranked, defensible action list. See [`notebooks/use_cases/`](notebooks/use_cases/README.md) for the full index. The three available today:
 
 | Persona / industry | Your data | Output |
 |-------------------|-----------|--------|
+| [Real-estate portfolio heat risk](notebooks/use_cases/real_estate_portfolio_heat_risk.ipynb) | Property portfolio | Client-deck slide pack (M1/M2/M3 maps) + per-property action brief citing public programs (EPA, USDA, ASHRAE, OSHA) |
 | [Urban planner — bus-stop cooling](notebooks/use_cases/urban_planner_bus_stop_prioritization.ipynb) | Bus-stop points | Ranked intervention list |
-| [Real-estate portfolio heat risk](notebooks/use_cases/real_estate_portfolio_heat_risk.ipynb) | Property portfolio | Risk-tiered table with per-asset OpEx uplift |
-| [Public-health vulnerable facilities](notebooks/use_cases/public_health_vulnerable_facilities.ipynb) | Facilities + vulnerability counts | Exposure-weighted priority + action list |
-| [Urban forestry tree prioritization](notebooks/use_cases/urban_forestry_tree_prioritization.ipynb) | Existing trees + candidate planting sites | Planting priority score per candidate |
+| [Public-parks heat-resilience audit](notebooks/use_cases/public_parks_heat_resilience_audit.ipynb) | Park points (id + type + acres + lat/lon) | Per-park audit with declarative, threshold-triggered recommendations citing federal programs |
 
 Each notebook ships with sample data in `data/` — drop in your own CSV with matching columns and everything downstream works.
+
+![Surface composition stacked bar — top-N parks](docs/images/surface_composition.png)
+
+*Example output from the public-parks audit: a satellite-segmentation stacked bar tells the parks director why each top park is hot — the building, road, and tree shares feed straight into threshold-triggered recommendations like "USDA Forest Service i-Tree planting plan" or "EPA Heat Island Reduction cool-pavement retrofit".*
 
 ---
 
@@ -85,7 +97,7 @@ FORTYGUARD_BASE_URL=https://api.fortyguard.com
 jupyter lab
 ```
 
-Open `notebooks/00_setup.ipynb` and run every cell top-to-bottom. If the last cell prints your plan and remaining credits, you're wired up. Continue through the remaining notebooks in order.
+Open `notebooks/00_setup.ipynb` and run every cell top-to-bottom. If the last cell prints your plan and remaining credits, you're wired up. Continue through the remaining notebooks in order, then pick a use-case workflow.
 
 ---
 
@@ -146,29 +158,29 @@ Pass `wait=False` to any analysis method to get the `activity_id` immediately an
 
 ```
 temperature-api-quickstart/
-├── README.md                # this file
-├── requirements.txt         # pinned dependencies
-├── .env.example             # template — copy to .env
-├── fortyguard/              # Python client
-│   ├── client.py            # FortyGuardClient — one method per endpoint
-│   ├── exceptions.py        # FortyGuardError, TaskFailedError, TaskTimeoutError
-│   └── samples.py           # sample polygons and points for demos
-├── data/                    # sample user datasets for the use-case notebooks
+├── README.md                 # this file
+├── requirements.txt          # pinned dependencies
+├── .env.example              # template — copy to .env
+├── docs/
+│   └── images/               # README screenshots
+├── fortyguard/               # Python client
+│   ├── client.py             # FortyGuardClient — one method per endpoint
+│   ├── exceptions.py         # FortyGuardError, TaskFailedError, TaskTimeoutError
+│   └── samples.py            # sample polygons and points for demos
+├── data/                     # sample user datasets + cached API responses
 │   ├── sample_bus_stops.csv
-│   ├── sample_real_estate_portfolio.csv
-│   ├── sample_public_facilities.csv
-│   ├── sample_existing_trees.csv
-│   └── sample_candidate_planting_sites.csv
-├── outputs/                 # generated artifacts (PDFs, action-list CSVs) — gitignored
+│   ├── sample_public_parks.csv
+│   ├── real_estate_san_jose_portfolio_sample.csv
+│   └── real_state_san_jose_*.{json,geojson,pdf}   # 24-h heatmap, env-params, satellite, street-view, heat-intelligence samples
+├── outputs/                  # generated artifacts (PDFs, action-list CSVs) — gitignored
 └── notebooks/
     ├── 00_setup.ipynb                     # endpoint reference — run first
-    ├── 01_create_heatmap.ipynb ... 06_credits_usage.ipynb
-    └── use_cases/                         # narrative workflows (user data × our layers)
+    ├── 01_create_heatmap.ipynb ... 05_heat_intelligence_report.ipynb
+    └── use_cases/                         # narrative workflows (your data × FortyGuard layers)
         ├── README.md
-        ├── urban_planner_bus_stop_prioritization.ipynb
         ├── real_estate_portfolio_heat_risk.ipynb
-        ├── public_health_vulnerable_facilities.ipynb
-        └── urban_forestry_tree_prioritization.ipynb
+        ├── urban_planner_bus_stop_prioritization.ipynb
+        └── public_parks_heat_resilience_audit.ipynb
 ```
 
 ---
@@ -179,6 +191,7 @@ temperature-api-quickstart/
 - **Filter types** for endpoints that take `date_time`: `1` = single hour, `2` = range of hours, `3` = single day.
 - **Failed tasks are free.** Credits are only deducted once a task reaches `succeeded`.
 - **Heat intelligence returns a PDF**, not JSON. The client streams it to `outputs/` and returns the file path.
+- **Cached mode for use-case notebooks.** Every use-case notebook ships with `CACHED=True` and the bundled `data/real_state_san_jose_*` files, so you can run them end-to-end without an API key. Set `CACHED=False` once you have a key to run live against any AOI.
 - **Base URL override.** Point `FORTYGUARD_BASE_URL` at the dev environment (`https://tos-enterprise-api.dev.app.fortyguard.com`) for testing.
 
 ---
