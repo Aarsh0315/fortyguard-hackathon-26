@@ -7,3 +7,4 @@ matplotlib>=3.8.0
 folium>=0.15.0
 pillow>=10.0.0
 shapely>=2.0.0
+reportlab>=4.0.0
