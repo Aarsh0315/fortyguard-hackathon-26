@@ -29,6 +29,32 @@ The `fortyguard/` package wraps every endpoint the API exposes and handles the s
 
 All analysis endpoints are asynchronous: you submit a request, get an `activity_id`, and poll `GET /v1/status/{activity_id}` until the task finishes. The client does the polling for you — you just call `client.create_heatmap(...)` and get the result back.
 
+#### How a request actually flows
+
+```
+       you / notebook              FortyGuard API
+            │                            │
+            │  POST /v1/<endpoint>       │   (payload: AOI / point + date_time + ...)
+            │ ─────────────────────────► │
+            │                            │
+            │  { activity_id: "..." }    │   202-style accept — task queued
+            │ ◄───────────────────────── │
+            │                            │
+            │  GET /v1/status/{id}       │
+            │ ─────────────────────────► │   ┐
+            │  { status: "processing" }  │   │  client polls every
+            │ ◄───────────────────────── │   │  poll_interval seconds
+            │  GET /v1/status/{id}       │   │  (default: 3s) until
+            │ ─────────────────────────► │   │  status terminates
+            │  { status: "succeeded",    │   │
+            │    result: {...} }         │   ┘
+            │ ◄───────────────────────── │
+```
+
+`client.<endpoint>(...)` does all of that in one call and returns `{"activity_id": ..., "result": ...}`. If you'd rather drive the polling yourself, pass `wait=False` to get the `activity_id` immediately, then call `client.get_status(activity_id)` or `client.wait_for(activity_id)` on your own schedule.
+
+> **Why async?** Heatmaps, segmentation, and PDF reports take seconds-to-minutes — the API queues them so a slow result never blocks your HTTP connection. Failed tasks are free; credits are deducted only on `succeeded`.
+
 ### Use-case notebooks
 
 Once you've completed `00_setup.ipynb`, jump into a narrative workflow that combines **your own data** with FortyGuard layers to produce a ranked, defensible action list. See [`notebooks/use_cases/`](notebooks/use_cases/README.md) for the full index. The three available today:
@@ -167,14 +193,20 @@ temperature-api-quickstart/
 │   ├── client.py             # FortyGuardClient — one method per endpoint
 │   ├── exceptions.py         # FortyGuardError, TaskFailedError, TaskTimeoutError
 │   └── samples.py            # sample polygons and points for demos
-├── data/                     # sample user datasets + cached API responses
-│   ├── sample_bus_stops.csv
-│   ├── sample_public_parks.csv
-│   ├── real_estate_san_jose_portfolio_sample.csv
-│   └── real_state_san_jose_*.{json,geojson,pdf}   # 24-h heatmap, env-params, satellite, street-view, heat-intelligence samples
-├── outputs/                  # generated artifacts (PDFs, action-list CSVs) — gitignored
+├── data/                     # sample user datasets + cached/live API responses
+│   ├── README.md                                # schemas for the bundled sample files
+│   ├── sample_bus_stops.csv                     # bus-stops use-case input
+│   ├── sample_public_parks.csv                  # parks use-case input
+│   ├── real_estate_san_jose_portfolio_sample.csv  # real-estate use-case input
+│   ├── real_estate_san_jose_heat_intelligence_sample_day_*.pdf  # cached heat-intel reports
+│   ├── heatmaps/             # cached + live heatmap GeoJSONs
+│   ├── satellite/            # cached + live satellite-segmentation JSONs (per-point)
+│   ├── street_view/          # cached + live street-view-segmentation JSONs (per-point)
+│   └── env_params/           # cached + live env-params JSONs (per-point)
+├── outputs/                  # generated hand-off bundles — gitignored
+│   └── <usecase>_<STUDY_DATE>/  # one folder per run: CSV + PDF + maps/*.html
 └── notebooks/
-    ├── 00_setup.ipynb                     # endpoint reference — run first
+    ├── 00_setup.ipynb                     # auth + credit check — run first
     ├── 01_create_heatmap.ipynb ... 05_heat_intelligence_report.ipynb
     └── use_cases/                         # narrative workflows (your data × FortyGuard layers)
         ├── README.md
@@ -187,11 +219,13 @@ temperature-api-quickstart/
 
 ## Useful things to know
 
+- **Coverage is U.S. only.** All endpoints operate over locations inside the United States. Polygons / points outside the U.S. will return errors or empty results — don't waste credits on AOIs in other countries.
+- **Date range.** The API serves data for **past dates and today**. Future dates are not supported — picking a `start_date` later than the current date will fail. Historical depth extends multiple years back, so any past day is a valid `start_date`.
 - **Coordinates are `[longitude, latitude]`** in GeoJSON — not the other way around.
 - **Filter types** for endpoints that take `date_time`: `1` = single hour, `2` = range of hours, `3` = single day.
 - **Failed tasks are free.** Credits are only deducted once a task reaches `succeeded`.
 - **Heat intelligence returns a PDF**, not JSON. The client streams it to `outputs/` and returns the file path.
-- **Cached mode for use-case notebooks.** Every use-case notebook ships with `CACHED=True` and the bundled `data/real_state_san_jose_*` files, so you can run them end-to-end without an API key. Set `CACHED=False` once you have a key to run live against any AOI.
+- **Cached mode for use-case notebooks.** Every use-case notebook ships with `CACHED=True` and the bundled `data/real_estate_san_jose_*` files, so you can run them end-to-end without an API key. Set `CACHED=False` once you have a key to run live against any AOI.
 - **Base URL override.** Point `FORTYGUARD_BASE_URL` at the dev environment (`https://tos-enterprise-api.dev.app.fortyguard.com`) for testing.
 
 ---

@@ -210,6 +210,9 @@ __marimo__/
 outputs/
 # *.pdf
 
+# Local scratch / working files (PDF cell templates, patches, dumps)
+.scratch/
+
 # Project data — sample CSVs, cached API responses, live captures.
 # Nothing under data/ ships with the repo; users bring their own input
 # files and any cached responses they want to reuse.

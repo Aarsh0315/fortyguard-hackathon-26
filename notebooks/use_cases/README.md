@@ -62,6 +62,42 @@ The three notebooks share the same pipeline shape but produce different *kinds* 
 
 Every use-case notebook ships with `CACHED=True` and bundled San Jose sample files in `data/`, so you can run any of them end-to-end **without an API key**. The cached files cover all four endpoints — heatmap, env-params, satellite, street-view. Set `CACHED=False` once you have a key to refetch live for any AOI.
 
+## Coverage and date range
+
+- **U.S. only.** The FortyGuard API serves data for locations inside the United States. Use cases run end-to-end here for San Jose, CA; swap in any U.S. AOI and the workflows hold. Coordinates outside the U.S. will return errors or empty responses.
+- **Past + current dates only.** `STUDY_DATE` can be any past day (multi-year history available) or today. Future dates are not supported and will fail at the heatmap call. The bundled samples are anchored at `2024-07-15` (bus-stops) and `2024-10-02` (parks, real-estate); change `STUDY_DATE` in the Setup cell to re-run for any other valid day.
+
+## Why env-params is only run on the top-N hottest
+
+The env-params API needs a per-point `temperature` value — the ambient air temperature at that lat/lon, in °C (see [`notebooks/02_environmental_parameters.ipynb`](../02_environmental_parameters.ipynb) for the field-level explanation). The API uses that anchor to derive heat index, apparent temperature, wet-bulb, etc., so the response is meaningful only when the anchor reflects real conditions.
+
+In every use-case notebook the heatmap (Step 2) already produces a peak temperature for every input point. The notebooks pass each of the **top-N hottest** points' `peak_temp_c` straight into the env-params `temperature=` argument, then let the API derive the diurnal heat-index / wet-bulb / humidity curves for those points. Two reasons we limit it to the top-N rather than every point:
+
+- **Credit budget.** env-params is a per-point call; running it across an entire portfolio would burn credits on locations that are already known not to be hot.
+- **Decision relevance.** Every downstream recommendation (Step 9 / 10) is about how to intervene at the hottest points — the comfort metrics only need to be defensible *there*. Running env-params on a temperate point would produce numbers no decision depends on.
+
+## Output folder structure
+
+Each notebook writes its hand-off bundle to a per-run folder under `outputs/`:
+
+```
+outputs/
+  bus_stops_<STUDY_DATE>/
+    action_list.csv              # ranked intervention list (Step 9)
+    bus_stops_report.pdf         # multi-page PDF for slide decks
+    maps/*.html                  # standalone interactive folium maps
+  public_parks_<STUDY_DATE>/
+    parks_audit.csv              # per-park audit + threshold-triggered recs
+    parks_report.pdf             # multi-page PDF
+    maps/*.html
+  real_estate_<STUDY_DATE>/
+    portfolio_evaluation.csv     # per-property scoring + tiers
+    real_estate_report.pdf       # client-deck slide pack
+    maps/*.html
+```
+
+The exact filenames may differ slightly between notebooks, but the shape is the same: a CSV the operations team can open in Excel, a PDF for stakeholder packets, and standalone HTML maps for design review. `outputs/` is git-ignored, so nothing here ships with the repo — every run produces its own bundle.
+
 ## Extending
 
 Each notebook ends with an "Apply this pattern" section listing adjacent use cases that reuse the same pipeline with different inputs.
