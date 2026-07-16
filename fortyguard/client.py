@@ -137,6 +137,13 @@ class FortyGuardClient:
 
     # ---------------------------------------------------------- analysis API
 
+    #: Analysis heatmap types selectable via ``analytic_type``. ``tcm`` is the
+    #: default snapshot; the other three are the analysis heatmaps that reuse the
+    #: same task, each stored as its own record.
+    ANALYTIC_TYPES: tuple[str, ...] = (
+        "tcm", "time_of_measure", "exceedance", "persistence",
+    )
+
     def create_heatmap(
         self,
         polygon_aoi: dict,
@@ -146,6 +153,9 @@ class FortyGuardClient:
         start_time: str | None = None,
         end_time: str | None = None,
         end_date: str | None = None,
+        analytic_type: str = "tcm",
+        threshold: float | None = None,
+        direction: str | None = None,
         *,
         wait: bool = True,
         poll_interval: float = 3.0,
@@ -154,9 +164,36 @@ class FortyGuardClient:
     ) -> dict | str:
         """POST /v1/heatmap — generate a thermal map over a polygon AOI.
 
-        ``filter_type``: 1=single hour, 2=range of hours, 3=single day.
+        ``filter_type``: 1=single hour, 2=range of hours, 3=single day,
+        4=range of days (pass ``end_date``).
         ``granularity``: spatial resolution in meters (60, 80, or 100).
+
+        Analysis heatmaps (``analytic_type``, default ``"tcm"``):
+
+        * ``tcm`` — snapshot temperature (the classic heatmap).
+        * ``time_of_measure`` — hour at which each cell hits its peak.
+        * ``exceedance`` — how often each cell crosses ``threshold``.
+        * ``persistence`` — longest run each cell stays past ``threshold``.
+
+        ``threshold`` (°C) and ``direction`` (``"above"``/``"below"``) are
+        required for ``exceedance`` and ``persistence`` and ignored otherwise.
         """
+        if analytic_type not in self.ANALYTIC_TYPES:
+            raise ValueError(
+                f"Unknown analytic_type {analytic_type!r}. "
+                f"Valid options: {self.ANALYTIC_TYPES}"
+            )
+        if analytic_type in ("exceedance", "persistence"):
+            if threshold is None:
+                raise ValueError(
+                    f"analytic_type={analytic_type!r} requires a threshold (°C)."
+                )
+            if direction not in ("above", "below"):
+                raise ValueError(
+                    f"analytic_type={analytic_type!r} requires direction "
+                    f"'above' or 'below'."
+                )
+
         date_time: dict[str, Any] = {"start_date": start_date, "filter_type": filter_type}
         if start_time is not None:
             date_time["start_time"] = start_time
@@ -165,11 +202,17 @@ class FortyGuardClient:
         if end_date is not None:
             date_time["end_date"] = end_date
 
-        payload = {
+        payload: dict[str, Any] = {
             "polygon_aoi": polygon_aoi,
             "date_time": date_time,
             "granularity": granularity,
+            "analytic_type": analytic_type,
         }
+        if threshold is not None:
+            payload["threshold"] = threshold
+        if direction is not None:
+            payload["direction"] = direction
+
         if not wait:
             return self._submit("/v1/heatmap", payload)
         return self._submit_and_wait(
