@@ -171,12 +171,12 @@ print(response["result"]["stats_data"])
 multi-hour or multi-day window (`filter_type` 2 or 4) you can ask for three
 analysis heatmaps instead, each derived from the same time series:
 
-| `analytic_type` | What each cell shows | Extra params |
-|-----------------|----------------------|--------------|
-| `tcm` *(default)* | Snapshot temperature | — |
-| `time_of_measure` | Hour at which the cell hits its peak | — |
-| `exceedance` | How often the cell crosses `threshold` | `threshold` (°C), `direction` |
-| `persistence` | Longest run the cell stays past `threshold` | `threshold` (°C), `direction` |
+| `analytic_type` | What each cell shows | Units | Extra params |
+|-----------------|----------------------|-------|--------------|
+| `tcm` *(default)* | Snapshot temperature | °F | — |
+| `time_of_measure` | **UTC hour-of-day** (0–23) of the cell's peak | hour | — |
+| `exceedance` | **Count of hours** the cell spends past `threshold` | hour | `threshold` (°C), `direction` |
+| `persistence` | **Longest continuous run** of such hours | hour | `threshold` (°C), `direction` |
 
 ```python
 response = client.create_heatmap(
@@ -192,6 +192,41 @@ response = client.create_heatmap(
 
 `threshold` and `direction` (`"above"`/`"below"`) are required for `exceedance`
 and `persistence`, and ignored for the other types.
+
+> **`threshold` is °C**, even though `tcm` tile temperatures come back in °F.
+> The Enterprise API takes the threshold in Celsius (default 30 °C).
+
+> **`exceedance` is a count of hours, not degree-hours.** A value of `6.0` means
+> the cell spent six hours past the threshold — it is not accumulated °C·h.
+
+#### Response shape for analysis heatmaps
+
+The three analysis types return a **different schema from `tcm`** — one `value`
+per tile rather than temperature fields:
+
+```jsonc
+// analytic_type = time_of_measure | exceedance | persistence
+{
+  "map_data": {                         // GeoJSON FeatureCollection
+    "features": [
+      { "properties": { "tile_id": 0, "value": 6.03 }, "geometry": {...} }
+    ]
+  },
+  "stats_data": {
+    "activity_id": "...",
+    "analytic_type": "exceedance",      // echoes the requested type
+    "units": "hour",
+    "n_cells": 150,
+    "min": 0.98, "max": 6.03, "mean": 2.46
+  }
+}
+```
+
+By contrast `tcm` returns `properties.average_temperature` / `min_temperature` /
+`max_temperature` (°F) and a `stats_data` carrying `temperature_stats` plus the
+distribution fields. So code that reads `properties.temperature` will find
+nothing on an analysis heatmap — read `properties.value` and interpret it with
+`stats_data.units`.
 
 Every endpoint has its own method:
 
@@ -254,7 +289,7 @@ temperature-api-quickstart/
 - **Date range.** The API serves data for **past dates and today**. Future dates are not supported — picking a `start_date` later than the current date will fail. Historical depth extends multiple years back, so any past day is a valid `start_date`.
 - **Coordinates are `[longitude, latitude]`** in GeoJSON — not the other way around.
 - **Filter types** for endpoints that take `date_time`: `1` = single hour, `2` = range of hours, `3` = single day, `4` = range of days (pass `end_date`).
-- **Analysis heatmaps.** `create_heatmap` accepts `analytic_type` (`tcm` / `time_of_measure` / `exceedance` / `persistence`) to derive time-of-peak, exceedance-count, or persistence maps from a multi-hour/multi-day window. `exceedance` and `persistence` also need `threshold` (°C) and `direction`.
+- **Analysis heatmaps.** `create_heatmap` accepts `analytic_type` (`tcm` / `time_of_measure` / `exceedance` / `persistence`) to derive time-of-peak, exceedance-count, or persistence maps from a multi-hour/multi-day window. `exceedance` and `persistence` also need `threshold` (**°C** — unlike the °F tile readings) and `direction`. The three analysis types return `properties.value` (units in `stats_data.units`, currently `hour`) instead of the `tcm` temperature fields — see [Analysis heatmaps](#analysis-heatmaps-analytic_type).
 - **Failed tasks are free.** Credits are only deducted once a task reaches `Completed`.
 - **Heat intelligence returns a PDF**, not JSON. The client streams it to `outputs/` and returns the file path.
 - **Cached mode for use-case notebooks.** Every use-case notebook ships with `CACHED=True` and the bundled `data/real_estate_san_jose_*` files, so you can run them end-to-end without an API key. Set `CACHED=False` once you have a key to run live against any AOI.

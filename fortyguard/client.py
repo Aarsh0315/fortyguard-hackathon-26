@@ -170,13 +170,21 @@ class FortyGuardClient:
 
         Analysis heatmaps (``analytic_type``, default ``"tcm"``):
 
-        * ``tcm`` — snapshot temperature (the classic heatmap).
-        * ``time_of_measure`` — hour at which each cell hits its peak.
-        * ``exceedance`` — how often each cell crosses ``threshold``.
-        * ``persistence`` — longest run each cell stays past ``threshold``.
+        * ``tcm`` — snapshot temperature (the classic heatmap), tiles in °F.
+        * ``time_of_measure`` — UTC hour-of-day (0-23) of each cell's peak.
+        * ``exceedance`` — count of hours each cell spends past ``threshold``
+          (a count of hours, not degree-hours).
+        * ``persistence`` — longest continuous run of such hours.
 
-        ``threshold`` (°C) and ``direction`` (``"above"``/``"below"``) are
-        required for ``exceedance`` and ``persistence`` and ignored otherwise.
+        ``threshold`` (**°C**, default 30 on the API side — note the contrast
+        with the °F tile readings) and ``direction`` (``"above"``/``"below"``)
+        are required for ``exceedance`` and ``persistence``, ignored otherwise.
+
+        The three analysis types return a different schema from ``tcm``: each
+        tile carries ``properties.value`` (interpret via ``stats_data.units``,
+        currently ``"hour"``) rather than the ``tcm`` temperature fields, and
+        ``stats_data`` carries ``analytic_type``/``units``/``n_cells``/
+        ``min``/``max``/``mean``.
         """
         if analytic_type not in self.ANALYTIC_TYPES:
             raise ValueError(
