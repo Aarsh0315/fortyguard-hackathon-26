@@ -350,11 +350,14 @@ class FortyGuardClient:
         timeout: float = 900.0,
         verbose: bool = True,
     ) -> Path:
-        """POST /v1/heat_intelligence — generate a PDF heat-intelligence report.
+        """POST /v1/heat_intelligence — generate a heat-intelligence report.
 
-        This endpoint always waits for completion because the final status
-        response streams a PDF directly. The file is written to ``output_path``
-        (default: ``./outputs/heat_intelligence_<activity_id>.pdf``).
+        Waits for completion, then downloads the generated PDF. On completion the
+        status response returns the standard JSON envelope with a short-lived
+        ``result.download_link`` (a pre-signed blob URL to the report PDF). Older
+        API versions streamed the PDF body from the status endpoint directly; that
+        is still handled for backward compatibility. The file is written to
+        ``output_path`` (default: ``./outputs/heat_intelligence_<activity_id>.pdf``).
         """
         analysis_list = list(analysis)
         unknown = set(analysis_list) - set(self._HEAT_INTEL_ANALYSES)
@@ -383,6 +386,7 @@ class FortyGuardClient:
                     f"GET /v1/status/{activity_id} -> {resp.status_code}: {resp.text[:500]}"
                 )
             content_type = resp.headers.get("Content-Type", "")
+            # Legacy API: the status endpoint streamed the PDF body directly.
             if "application/pdf" in content_type or "octet-stream" in content_type:
                 target = Path(output_path) if output_path else (
                     Path("outputs") / f"heat_intelligence_{activity_id}.pdf"
@@ -400,9 +404,35 @@ class FortyGuardClient:
             resp.close()
             if body.get("error"):
                 raise FortyGuardError(body.get("message", "Status lookup failed"))
-            status = str(body.get("data", {}).get("status", "")).lower()
+            data = body.get("data", {})
+            status = str(data.get("status", "")).lower()
             if verbose:
                 print(f"  status: {status}")
+            # Current API: status returns JSON with a pre-signed download link.
+            if status in _TERMINAL_SUCCESS:
+                download_link = (data.get("result") or {}).get("download_link")
+                if not download_link:
+                    raise FortyGuardError(
+                        f"Activity {activity_id} completed but the status response "
+                        f"contained no report download_link"
+                    )
+                target = Path(output_path) if output_path else (
+                    Path("outputs") / f"heat_intelligence_{activity_id}.pdf"
+                )
+                target.parent.mkdir(parents=True, exist_ok=True)
+                # Pre-signed blob URL — fetch directly, no API auth headers needed.
+                with requests.get(download_link, stream=True, timeout=self.timeout) as dl:
+                    if not dl.ok:
+                        raise FortyGuardError(
+                            f"Downloading report -> {dl.status_code}: {dl.text[:200]}"
+                        )
+                    with target.open("wb") as fh:
+                        for chunk in dl.iter_content(chunk_size=65536):
+                            if chunk:
+                                fh.write(chunk)
+                if verbose:
+                    print(f"Saved report to {target}")
+                return target
             if status in _TERMINAL_FAILURE:
                 raise TaskFailedError(f"Activity {activity_id} failed")
             if time.monotonic() >= deadline:
