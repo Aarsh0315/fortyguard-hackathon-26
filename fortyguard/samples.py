@@ -53,6 +53,7 @@ FILTER_TYPES = {
     "single_hour": 1,
     "range_of_hours": 2,
     "single_day": 3,
+    "range_of_days": 4,
 }
 
 # Analysis categories for the Heat Intelligence endpoint.

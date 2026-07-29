@@ -20,7 +20,7 @@ The `fortyguard/` package wraps every endpoint the API exposes and handles the s
 
 | # | Notebook | Endpoint | Plan |
 |---|----------|----------|------|
-| 00 | [Setup & authentication](notebooks/00_setup.ipynb) | `POST /v1/system/fetch-api-key-usage` | Both |
+| 00 | [Setup & authentication](notebooks/00_setup.ipynb) | `POST /v1/system/fetch-api-key-custom-usage` | Both |
 | 01 | [Create heatmap](notebooks/01_create_heatmap.ipynb) | `POST /v1/heatmap` | Both |
 | 02 | [Environmental parameters](notebooks/02_environmental_parameters.ipynb) | `POST /v1/env_params` | Both |
 | 03 | [Satellite segmentation](notebooks/03_satellite_segmentation.ipynb) | `POST /v1/satellite` | Premium |
@@ -68,7 +68,7 @@ Once you've completed `00_setup.ipynb`, jump into a narrative workflow that comb
 | [Urban planner — bus-stop cooling](notebooks/use_cases/urban_planner_bus_stop_prioritization.ipynb) | Bus-stop points | Ranked intervention list |
 | [Public-parks heat-resilience audit](notebooks/use_cases/public_parks_heat_resilience_audit.ipynb) | Park points (id + type + acres + lat/lon) | Per-park audit with declarative, threshold-triggered recommendations citing federal programs |
 
-Each notebook ships with sample data in `data/` — drop in your own CSV with matching columns and everything downstream works.
+Bring your own inputs: create a `data/` directory (it's git-ignored, not shipped) and drop in a CSV with the columns each notebook documents — everything downstream works. See each use-case notebook's intro for the expected schema.
 
 ![Surface composition stacked bar — top-N parks](docs/images/surface_composition.png)
 
@@ -173,7 +173,7 @@ analysis heatmaps instead, each derived from the same time series:
 
 | `analytic_type` | What each cell shows | Units | Extra params |
 |-----------------|----------------------|-------|--------------|
-| `tcm` *(default)* | Snapshot temperature | °F | — |
+| `tcm` *(default)* | Snapshot temperature | °C | — |
 | `time_of_measure` | **UTC hour-of-day** (0–23) of the cell's peak | hour | — |
 | `exceedance` | **Count of hours** the cell spends past `threshold` | hour | `threshold` (°C), `direction` |
 | `persistence` | **Longest continuous run** of such hours | hour | `threshold` (°C), `direction` |
@@ -193,8 +193,8 @@ response = client.create_heatmap(
 `threshold` and `direction` (`"above"`/`"below"`) are required for `exceedance`
 and `persistence`, and ignored for the other types.
 
-> **`threshold` is °C**, even though `tcm` tile temperatures come back in °F.
-> The Enterprise API takes the threshold in Celsius (default 30 °C).
+> **`threshold` is °C** — the same unit as the `tcm` tile temperatures, which
+> the Enterprise API also returns in **°C** (default threshold 30 °C).
 
 > **`exceedance` is a count of hours, not degree-hours.** A value of `6.0` means
 > the cell spent six hours past the threshold — it is not accumulated °C·h.
@@ -223,7 +223,7 @@ per tile rather than temperature fields:
 ```
 
 By contrast `tcm` returns `properties.average_temperature` / `min_temperature` /
-`max_temperature` (°F) and a `stats_data` carrying `temperature_stats` plus the
+`max_temperature` (°C) and a `stats_data` carrying `temperature_stats` plus the
 distribution fields. So code that reads `properties.temperature` will find
 nothing on an analysis heatmap — read `properties.value` and interpret it with
 `stats_data.units`.
@@ -259,16 +259,12 @@ temperature-api-quickstart/
 │   ├── client.py             # FortyGuardClient — one method per endpoint
 │   ├── exceptions.py         # FortyGuardError, TaskFailedError, TaskTimeoutError
 │   └── samples.py            # sample polygons and points for demos
-├── data/                     # sample user datasets + cached/live API responses
-│   ├── README.md                                # schemas for the bundled sample files
-│   ├── sample_bus_stops.csv                     # bus-stops use-case input
-│   ├── sample_public_parks.csv                  # parks use-case input
-│   ├── real_estate_san_jose_portfolio_sample.csv  # real-estate use-case input
-│   ├── real_estate_san_jose_heat_intelligence_sample_day_*.pdf  # cached heat-intel reports
-│   ├── heatmaps/             # cached + live heatmap GeoJSONs
-│   ├── satellite/            # cached + live satellite-segmentation JSONs (per-point)
-│   ├── street_view/          # cached + live street-view-segmentation JSONs (per-point)
-│   └── env_params/           # cached + live env-params JSONs (per-point)
+├── data/                     # YOU create this — git-ignored, not shipped with the repo
+│   ├── sample_bus_stops.csv                     # bus-stops use-case input (bring your own)
+│   ├── sample_public_parks.csv                  # parks use-case input (bring your own)
+│   ├── real_estate_san_jose_portfolio_sample.csv  # real-estate use-case input (bring your own)
+│   └── <subdirs>/            # optional: cached API responses you save to replay with CACHED=True
+│                             #   (heatmaps/, satellite/, street_view/, env_params/)
 ├── outputs/                  # generated hand-off bundles — gitignored
 │   └── <usecase>_<STUDY_DATE>/  # one folder per run: CSV + PDF + maps/*.html
 └── notebooks/
@@ -286,13 +282,13 @@ temperature-api-quickstart/
 ## Useful things to know
 
 - **Coverage is U.S. only.** All endpoints operate over locations inside the United States. Polygons / points outside the U.S. will return errors or empty results — don't waste credits on AOIs in other countries.
-- **Date range.** The API serves data for **past dates and today**. Future dates are not supported — picking a `start_date` later than the current date will fail. Historical depth extends multiple years back, so any past day is a valid `start_date`.
+- **Date range.** The temperature catalog covers **2021 to today**. Pick a `start_date` on or after `2021-01-01` — earlier dates have no coverage and the request will fail with a "no data available for this area and date" error. Future dates are also unsupported (a `start_date` later than today fails).
 - **Coordinates are `[longitude, latitude]`** in GeoJSON — not the other way around.
-- **Filter types** for endpoints that take `date_time`: `1` = single hour, `2` = range of hours, `3` = single day, `4` = range of days (pass `end_date`).
-- **Analysis heatmaps.** `create_heatmap` accepts `analytic_type` (`tcm` / `time_of_measure` / `exceedance` / `persistence`) to derive time-of-peak, exceedance-count, or persistence maps from a multi-hour/multi-day window. `exceedance` and `persistence` also need `threshold` (**°C** — unlike the °F tile readings) and `direction`. The three analysis types return `properties.value` (units in `stats_data.units`, currently `hour`) instead of the `tcm` temperature fields — see [Analysis heatmaps](#analysis-heatmaps-analytic_type).
+- **Filter types** for endpoints that take `date_time`: `1` = single hour (needs `start_time`), `2` = range of hours (same day; `start_time`+`end_time`), `3` = single day (full 24 h; needs only `start_date` — `start_time` is ignored), `4` = range of days (pass `end_date`; window capped at ~31 days).
+- **Analysis heatmaps.** `create_heatmap` accepts `analytic_type` (`tcm` / `time_of_measure` / `exceedance` / `persistence`) to derive time-of-peak, exceedance-count, or persistence maps from a multi-hour/multi-day window. `exceedance` and `persistence` also need `threshold` (**°C**, same unit as the tile readings) and `direction`. The three analysis types return `properties.value` (units in `stats_data.units`, currently `hour`) instead of the `tcm` temperature fields — see [Analysis heatmaps](#analysis-heatmaps-analytic_type).
 - **Failed tasks are free.** Credits are only deducted once a task reaches `Completed`.
 - **Heat intelligence returns a PDF**, not JSON. The client streams it to `outputs/` and returns the file path.
-- **Cached mode for use-case notebooks.** Every use-case notebook ships with `CACHED=True` and the bundled `data/real_estate_san_jose_*` files, so you can run them end-to-end without an API key. Set `CACHED=False` once you have a key to run live against any AOI.
+- **Cached mode for use-case notebooks.** Each use-case notebook has a `CACHED` flag (default `False` — runs **live**, so you need an API key). The `data/` directory is **not** shipped with the repo (`.gitignore` excludes it); bring your own inputs. If you save a run's responses under `data/` you can flip `CACHED=True` to replay them offline, but a fresh clone starts live-only.
 - **Base URL override.** Point `FORTYGUARD_BASE_URL` at the dev environment (`https://tos-enterprise-api.dev.app.fortyguard.com`) for testing.
 
 ---

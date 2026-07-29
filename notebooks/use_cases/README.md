@@ -58,14 +58,14 @@ The three notebooks share the same pipeline shape but produce different *kinds* 
 - **Bus stops** — a single **ranked intervention list** with cause tagging (pavement, canopy, or ground-level shade) so the city public-works team knows which kind of intervention each stop needs.
 - **Public parks** — **declarative, threshold-triggered recommendations** with no invented index and no monetary translation. Every action is *if measurement X crosses a published threshold Y, recommend program Z*, where the threshold and the program both already exist (NOAA, EPA, USDA, CDC, NRPA). Portable to any city in the country.
 
-## Cached by default
+## Running the use cases
 
-Every use-case notebook ships with `CACHED=True` and bundled San Jose sample files in `data/`, so you can run any of them end-to-end **without an API key**. The cached files cover all four endpoints — heatmap, env-params, satellite, street-view. Set `CACHED=False` once you have a key to refetch live for any AOI.
+These notebooks run **live** against the API, so add your `FORTYGUARD_API_KEY` to `.env` first. The `data/` directory is git-ignored and **not** shipped with the repo — bring your own input CSV (each notebook's Setup section documents the expected columns and path). If you save API responses under `data/`, you can replay them offline on a later run.
 
 ## Coverage and date range
 
 - **U.S. only.** The FortyGuard API serves data for locations inside the United States. Use cases run end-to-end here for San Jose, CA; swap in any U.S. AOI and the workflows hold. Coordinates outside the U.S. will return errors or empty responses.
-- **Past + current dates only.** `STUDY_DATE` can be any past day (multi-year history available) or today. Future dates are not supported and will fail at the heatmap call. The bundled samples are anchored at `2024-07-15` (bus-stops) and `2024-10-02` (parks, real-estate); change `STUDY_DATE` in the Setup cell to re-run for any other valid day.
+- **Dates: 2021 to today.** `STUDY_DATE` must be on or after `2021-01-01` (the catalog's start) and no later than today — earlier or future dates fail at the heatmap call with a "no data available" error. The sample dates are `2024-07-15` (bus-stops) and `2024-10-02` (parks, real-estate); change `STUDY_DATE` in the Setup cell to re-run for any other valid day.
 
 ## Why env-params is only run on the top-N hottest
 
