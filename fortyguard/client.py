@@ -13,7 +13,12 @@ from typing import Any, Iterable
 
 import requests
 
-from .exceptions import FortyGuardError, TaskFailedError, TaskTimeoutError
+from .exceptions import (
+    ActivityNotReadyError,
+    FortyGuardError,
+    TaskFailedError,
+    TaskTimeoutError,
+)
 
 DEFAULT_BASE_URL = "https://api.fortyguard.com"
 _TERMINAL_SUCCESS = {"succeeded", "completed"}
@@ -73,8 +78,22 @@ class FortyGuardClient:
             raise FortyGuardError(f"Unexpected response shape: {body}") from exc
 
     def get_status(self, activity_id: str) -> dict:
-        """Return the raw status-endpoint JSON for an activity."""
-        body = self._request("GET", f"/v1/status/{activity_id}").json()
+        """Return the raw status-endpoint JSON for an activity.
+
+        Right after submission the status endpoint can briefly return 404 while
+        the activity propagates. That is surfaced as ``ActivityNotReadyError`` so
+        callers (``wait_for``) can retry instead of failing.
+        """
+        resp = self._session.get(
+            f"{self.base_url}/v1/status/{activity_id}", timeout=self.timeout
+        )
+        if resp.status_code == 404:
+            raise ActivityNotReadyError(activity_id)
+        if not resp.ok:
+            raise FortyGuardError(
+                f"GET /v1/status/{activity_id} -> {resp.status_code}: {resp.text[:500]}"
+            )
+        body = resp.json()
         if body.get("error"):
             raise FortyGuardError(body.get("message", "Status lookup failed"))
         return body["data"]
@@ -92,7 +111,19 @@ class FortyGuardClient:
         """
         deadline = time.monotonic() + timeout
         while True:
-            data = self.get_status(activity_id)
+            try:
+                data = self.get_status(activity_id)
+            except ActivityNotReadyError:
+                # Not queryable yet (eventual consistency right after submit).
+                # Keep polling until the deadline instead of failing on the race.
+                if on_tick:
+                    on_tick("pending", {})
+                if time.monotonic() >= deadline:
+                    raise TaskTimeoutError(
+                        f"Activity {activity_id} never became visible within {timeout:.0f}s"
+                    )
+                time.sleep(poll_interval)
+                continue
             status = str(data.get("status", "")).lower()
             if on_tick:
                 on_tick(status, data)
@@ -234,7 +265,7 @@ class FortyGuardClient:
         longitude: float,
         start_date: str,
         filter_type: int,
-        granularity: int = 80,
+        granularity: int = 100,
         start_time: str | None = None,
         end_time: str | None = None,
         end_date: str | None = None,
@@ -293,6 +324,16 @@ class FortyGuardClient:
             poll_interval=poll_interval, timeout=timeout, verbose=verbose,
         )
 
+    #: Parameter names the env_params endpoint accepts/returns (the exact strings
+    #: the API emits). Pass a subset via ``analysis=`` to restrict the response.
+    _ENV_PARAMS_ANALYSES: tuple[str, ...] = (
+        "heat_index_celsius", "apparent_temperature_celsius", "wet_bulb_temperature_celsius",
+        "relative_humidity_percent", "precipitation_mm", "cloud_cover_octas",
+        "air_quality:idx", "air_quality_no2:idx", "air_quality_o3:idx",
+        "air_quality_pm2p5:idx", "air_quality_pm10:idx", "air_quality_so2:idx",
+        "aqi_us_co", "methane_ppb", "co2_ppm", "elevation", "solar_irradiance",
+    )
+
     def environmental_parameters(
         self,
         latitude: float,
@@ -303,13 +344,27 @@ class FortyGuardClient:
         start_time: str | None = None,
         end_time: str | None = None,
         end_date: str | None = None,
+        analysis: Iterable[str] | None = None,
         *,
         wait: bool = True,
         poll_interval: float = 3.0,
         timeout: float = 600.0,
         verbose: bool = True,
     ) -> dict | str:
-        """POST /v1/env_params — heat index, AQI, solar irradiance, and more."""
+        """POST /v1/env_params — heat index, AQI, solar irradiance, and more.
+
+        ``analysis`` optionally restricts the response to a subset of
+        ``_ENV_PARAMS_ANALYSES`` (the exact parameter names the API emits). Omit it
+        (default ``None``) to get the endpoint's full default set of parameters.
+        """
+        if analysis is not None:
+            analysis = list(analysis)
+            unknown = set(analysis) - set(self._ENV_PARAMS_ANALYSES)
+            if unknown:
+                raise ValueError(
+                    f"Unknown env-params analysis {unknown}. "
+                    f"Valid options: {self._ENV_PARAMS_ANALYSES}"
+                )
         date_time: dict[str, Any] = {"start_date": start_date, "filter_type": filter_type}
         if start_time is not None:
             date_time["start_time"] = start_time
@@ -318,12 +373,14 @@ class FortyGuardClient:
         if end_date is not None:
             date_time["end_date"] = end_date
 
-        payload = {
+        payload: dict[str, Any] = {
             "latitude": latitude,
             "longitude": longitude,
             "temperature": temperature,
             "date_time": date_time,
         }
+        if analysis is not None:
+            payload["analysis"] = analysis
         if not wait:
             return self._submit("/v1/env_params", payload)
         return self._submit_and_wait(
@@ -381,6 +438,17 @@ class FortyGuardClient:
         url = f"{self.base_url}/v1/status/{activity_id}"
         while True:
             resp = self._session.get(url, stream=True, timeout=self.timeout)
+            if resp.status_code == 404:
+                # Not queryable yet (eventual consistency right after submit) — retry.
+                resp.close()
+                if verbose:
+                    print("  status: pending")
+                if time.monotonic() >= deadline:
+                    raise TaskTimeoutError(
+                        f"Activity {activity_id} never became visible within {timeout:.0f}s"
+                    )
+                time.sleep(poll_interval)
+                continue
             if not resp.ok:
                 raise FortyGuardError(
                     f"GET /v1/status/{activity_id} -> {resp.status_code}: {resp.text[:500]}"
