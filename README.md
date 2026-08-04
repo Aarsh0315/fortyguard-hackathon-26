@@ -62,13 +62,19 @@ All analysis endpoints are asynchronous: you submit a request, get an `activity_
 
 ### Use-case notebooks
 
-Once you've completed `00_setup.ipynb`, jump into a narrative workflow that combines **your own data** with FortyGuard layers to produce a ranked, defensible action list. See [`notebooks/use_cases/`](notebooks/use_cases/README.md) for the full index. The three available today:
+Once you've completed `00_setup.ipynb`, jump into a narrative workflow that combines **your own data** with FortyGuard layers to produce a ranked, defensible action list. See [`notebooks/use_cases/`](notebooks/use_cases/README.md) for the full index. The five available today:
 
 | Persona / industry | Your data | Output |
 |-------------------|-----------|--------|
 | [Real-estate portfolio heat risk](notebooks/use_cases/real_estate_portfolio_heat_risk.ipynb) | Property portfolio | Client-deck slide pack (M1/M2/M3 maps) + per-property action brief citing public programs (EPA, USDA, ASHRAE, OSHA) |
 | [Urban planner — bus-stop cooling](notebooks/use_cases/urban_planner_bus_stop_prioritization.ipynb) | Bus-stop points | Ranked intervention list |
 | [Public-parks heat-resilience audit](notebooks/use_cases/public_parks_heat_resilience_audit.ipynb) | Park points (id + type + acres + lat/lon) | Per-park audit with declarative, threshold-triggered recommendations citing federal programs |
+| [Single-parcel heat due diligence](notebooks/use_cases/parcel_site_due_diligence.ipynb) | **One parcel boundary** (polygon GeoJSON) | `reportAll` bundle — branded PDF + evaluation CSV + findings CSV + maps, from **all five endpoints** on one site |
+| [Multi-parcel heat screening](notebooks/use_cases/parcel_portfolio_heat_screening.ipynb) | **Several parcel boundaries** (multi-feature polygon GeoJSON) | Ranked shortlist — one 14 km² AOI across the whole portfolio, area-weighted per parcel, expensive endpoints spent only on the top few. **Temperatures in °F with °C in brackets** |
+
+> **The two parcel notebooks are the ones to demo to a client on their own sites.** They take boundaries rather than point lists and run building-scale AOIs instead of citywide ones. Use the **single-parcel** one for "should I buy this site" and the **multi-parcel** one for "which of these sites should I pursue". See [Parcel scale vs. city scale](#parcel-scale-vs-city-scale) below for why both lead with exposure *duration* rather than peak temperature.
+
+> **These two run with no API key.** Unlike the rest of the repo, the parcel notebooks ship both their input boundaries and their cached API responses. Clone, `pip install -r requirements.txt`, open either notebook, and Run All — you get the full report bundle offline, with zero credits spent. Everything else in `data/` is git-ignored; set `REFRESH = True` in a parcel notebook's Setup cell when you do want live calls.
 
 Bring your own inputs: create a `data/` directory (it's git-ignored, not shipped) and drop in a CSV with the columns each notebook documents — everything downstream works. See each use-case notebook's intro for the expected schema.
 
@@ -265,6 +271,8 @@ temperature-api-quickstart/
 │   ├── sample_bus_stops.csv                     # bus-stops use-case input (bring your own)
 │   ├── sample_public_parks.csv                  # parks use-case input (bring your own)
 │   ├── real_estate_san_jose_portfolio_sample.csv  # real-estate use-case input (bring your own)
+│   ├── parcel_diridon_san_jose_sample.geojson   # parcel use-case input — one polygon boundary
+│   ├── parcel_portfolio_san_jose_sample.geojson # multi-parcel screening input — 6 boundaries
 │   └── <subdirs>/            # optional: cached API responses you save to replay with CACHED=True
 │                             #   (heatmaps/, satellite/, street_view/, env_params/)
 ├── outputs/                  # generated hand-off bundles — gitignored
@@ -276,8 +284,40 @@ temperature-api-quickstart/
         ├── README.md
         ├── real_estate_portfolio_heat_risk.ipynb
         ├── urban_planner_bus_stop_prioritization.ipynb
-        └── public_parks_heat_resilience_audit.ipynb
+        ├── public_parks_heat_resilience_audit.ipynb
+        ├── parcel_site_due_diligence.ipynb    # one parcel boundary, all five endpoints
+        └── parcel_portfolio_heat_screening.ipynb  # many boundaries, ranked shortlist, °F
 ```
+
+---
+
+## Parcel scale vs. city scale
+
+The three point-based use cases run over a citywide AOI (~104 km²) and rank points against each other. The two parcel notebooks work at building scale, where two things change and the workflow has to change with them.
+
+**A parcel is smaller than a tile.** The finest granularity the heatmap offers is 60 m. A 3.3-acre parcel (140 × 100 m) spans under four tiles, so there is no "hot spot within the parcel" to find, and a nearest-tile lookup would silently discard most of the site. Both parcel notebooks compute an **area-weighted mean** over every tile the boundary overlaps, weighted by overlap area.
+
+**At parcel scale the temperature snapshot is nearly flat — duration is not.** Measured across three AOI sizes:
+
+| AOI | Area | Daily-peak spread | Exceedance spread |
+|---|---|---|---|
+| Citywide (2024-07-15) | 104 km² | 5.85 °C / 10.5 °F | — |
+| Portfolio hull + 400 m (2026-08-03) | 14 km² | **0.94 °C / 1.70 °F** | **6.5 h** |
+| Single parcel + 500 m (2024-07-15) | 1.2 km² | **0.90 °C / 1.62 °F** | **15.2 h** |
+
+Peak temperature barely separates sites below city scale; hours-above-threshold does. So both parcel notebooks lead with `exceedance` and `persistence`. The single-parcel notebook uses a **citywide** percentile as its comparison; the multi-parcel one compares parcels against each other, which is what the larger AOI buys you.
+
+### Reading `heat_index_celsius` correctly
+
+The `env_params` endpoint applies your single `temperature` anchor across **all 24 hours** and varies only humidity. Heat index is a function of both, so the returned series tracks relative humidity — and because humidity peaks overnight, **the heat-index curve peaks around 2 a.m. and bottoms out mid-afternoon**. In the bundled San Jose parcel run it reads 32.5 °C at 02:00 and 27.3 °C at 14:00, while the real air temperature at 02:00 is about 16 °C.
+
+It is a humidity-sensitivity curve at a fixed temperature, not a diurnal forecast. It is only physically meaningful at the hours when actual temperature is near the anchor — the afternoon peak. Compare against a published threshold **at the hot hour** (both parcel notebooks use the hour when `apparent_temperature_celsius`, which does follow the real diurnal cycle, is highest), and take duration from the heatmap `exceedance` layer instead of counting hours in this series.
+
+On a hot day the artifact gets extreme: for 2026-08-03, a 37.2 °C anchor paired with 84% small-hours humidity produces a heat index of **159 °F (70 °C) at 05:00** — well past the end of the NWS table. The multi-parcel notebook scales its chart axis to the physically meaningful series and lets that curve clip off-scale with a note, rather than letting one artifact compress every real curve into the bottom of the panel.
+
+### Units
+
+The API returns Celsius throughout. [`parcel_portfolio_heat_screening.ipynb`](notebooks/use_cases/parcel_portfolio_heat_screening.ipynb) displays **Fahrenheit with Celsius in brackets** — `97.4 °F (36.3 °C)` — via three helpers set once in its Setup cell (`tf()` to format, `c2f()` to convert for plotting, `add_celsius_axis()` to mirror a chart axis). Conversion happens only at display time, so stored values, CSV columns, and threshold comparisons all stay in the API's native Celsius and cannot drift from what is shown.
 
 ---
 

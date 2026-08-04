@@ -1,20 +1,47 @@
 # Use-case notebooks
 
-Narrative workflows that combine **your data** with **FortyGuard's layers** to produce a ranked, defensible action list. They all follow the same shape — load your point list → join the heatmap → enrich the top exposures with satellite / street-view / env-params → translate the measurements into a business or public-health decision — but differ in inputs, scoring, and outputs so they're not template copies.
+Narrative workflows that combine **your data** with **FortyGuard's layers** to produce a ranked, defensible action list. The first three follow the same shape — load your point list → join the heatmap → enrich the top exposures with satellite / street-view / env-params → translate the measurements into a business or public-health decision — but differ in inputs, scoring, and outputs so they're not template copies. The last two work from **parcel boundaries** instead and are structured differently; see [The parcel notebooks](#the-parcel-notebooks-different-on-purpose) below.
 
 Run `notebooks/00_setup.ipynb` first if you haven't yet, then pick any of these.
 
-## The three notebooks
+## The five notebooks
 
 | Notebook | Persona / industry | Your data | FortyGuard layers | Output |
 |----------|-------------------|-----------|-------------------|--------|
 | [Real-estate portfolio heat risk](real_estate_portfolio_heat_risk.ipynb) | Real-estate agents prepping a client portfolio review | Portfolio table (properties + value + sqft) | Heatmap + satellite + street view + env_params | **Client-deck slide pack** — M1/M2/M3 priority maps + per-property action brief with intervention recommendations citing public programs (EPA Heat Island, USDA i-Tree, ASHRAE 90.1, ASHRAE 55, OSHA Heat Illness) + `portfolio_evaluation.csv` |
 | [Urban planner — bus-stop cooling](urban_planner_bus_stop_prioritization.ipynb) | City transit / public works | Point layer (bus stops) | Heatmap + satellite + street view + env_params | **Ranked intervention list** with cause-tagged recommendations (pavement vs. canopy vs. ground-level shade) |
 | [Public-parks heat-resilience audit](public_parks_heat_resilience_audit.ipynb) | City parks-and-rec / public-health environmental health | Park point list (id + type + acres + lat/lon) | Heatmap + satellite + street view + env_params | **Per-park audit CSV + priority map** with declarative, threshold-triggered recommendations citing federal programs (USDA i-Tree, EPA Heat Island Reduction, CDC BRACE, NRPA Shade-Equity) |
+| [Single-parcel heat due diligence](parcel_site_due_diligence.ipynb) | Developers / owners evaluating **one site** before acquisition, entitlement, or design | **One parcel boundary** (single-feature polygon GeoJSON) | **All five** — heatmap (`tcm` + `exceedance` + `persistence`) + satellite + street view + env_params + heat_intelligence | **`reportAll` bundle** — branded PDF + `parcel_evaluation.csv` + `findings.csv` + maps, plus the heat-intelligence narrative alongside |
+| [Multi-parcel heat screening](parcel_portfolio_heat_screening.ipynb) | Acquisitions / land teams comparing **several candidate sites** to build a shortlist | **Several parcel boundaries** (multi-feature polygon GeoJSON) | **All five**, with the per-point endpoints spent only on the top `TOP_N` parcels | **Ranked shortlist** — branded PDF + `parcel_screening.csv` + `findings.csv` + maps. Temperatures in **°F with °C in brackets** |
 
-## The shared workflow
+## The parcel notebooks: different on purpose
 
-Every notebook walks through the same five stages — only the input shape and the final action artifact change:
+These are the ones to demo to a client on their own sites. They are not further variations on the point pipeline — the scale forces a different method, and the differences are the interesting part.
+
+| | The three point notebooks | Single parcel | Multi-parcel screening |
+|---|---|---|---|
+| Input | CSV of points | one polygon boundary | **many polygon boundaries** |
+| AOI | citywide, ~104 km² | parcel + 500 m, ~1.2 km² | **hull + 400 m, ~14 km²** |
+| Join | point-in-tile lookup | **area-weighted clip** | area-weighted clip, **per parcel** |
+| Ranking | points against each other | one site against the **city** | **parcels against each other** |
+| Lead metric | peak temperature | **hours above threshold** | **hours above threshold** |
+| Enrichment | top-N points | the one site | **top-N parcels** |
+| Units | °C | °C | **°F with °C in brackets** |
+| Endpoints | 4 | **all 5** | **all 5** |
+
+**Which one to reach for.** Single-parcel answers *"should I buy this site"* — one boundary, everything measured on it. Multi-parcel answers *"which of these should I pursue"* — one shared heatmap request across the whole portfolio (cheaper than one call per site, and it puts every parcel on a common scale), then the expensive per-point endpoints reserved for the top few. Raising `TOP_N` from 3 to 6 doubles that notebook's bill; the heatmap cost does not move.
+
+**Why the join changes.** The heatmap's finest granularity is 60 m, and the sample parcel is 140 × 100 m — under four tiles. A nearest-tile lookup would throw away most of the site and flip its answer depending on where the centroid lands. The notebook instead takes an area-weighted mean over every tile the boundary overlaps.
+
+**Why the lead metric changes.** The daily-peak snapshot spans **0.90 °C** across the single-parcel AOI and **0.94 °C** across the 14 km² portfolio AOI, against **5.85 °C** citywide — below city scale it is nearly flat and cannot separate one site from its neighbours. Exceedance over those same AOIs spans **15.2 h** and **6.5 h** respectively. Duration carries the signal at parcel scale; the snapshot does not.
+
+**A trap worth knowing about.** The `env_params` endpoint applies one `temperature` anchor across all 24 hours and varies only humidity, so `heat_index_celsius` tracks humidity and **peaks overnight**. In the single-parcel run that is 32.5 °C at 02:00 versus 27.3 °C at 14:00, while real air temperature at 02:00 is about 16 °C. On the hot 2026-08-03 screening day it gets extreme: a 37.2 °C anchor with 84% small-hours humidity yields **159 °F / 70 °C at 05:00**, past the end of the NWS table.
+
+It is a humidity-sensitivity curve at a fixed temperature, not a diurnal forecast. Counting "hours above a threshold" from it counts night-time artifacts as daytime exposure. Both parcel notebooks compare against published thresholds only at the **hot hour** (where `apparent_temperature_celsius` peaks) and take all duration figures from the measured `exceedance` layer instead. The multi-parcel notebook additionally scales its chart axis to the meaningful series so the artifact clips off-scale rather than flattening every real curve. **The same caveat applies to the `hours_above_sla` column in the real-estate notebook**, which is computed from this series.
+
+## The shared workflow (point notebooks)
+
+The three point-based notebooks walk through the same five stages — only the input shape and the final action artifact change:
 
 | Stage | What happens | API call |
 |---|---|---|
@@ -60,7 +87,11 @@ The three notebooks share the same pipeline shape but produce different *kinds* 
 
 ## Running the use cases
 
-These notebooks run **live** against the API, so add your `FORTYGUARD_API_KEY` to `.env` first. The `data/` directory is git-ignored and **not** shipped with the repo — bring your own input CSV (each notebook's Setup section documents the expected columns and path). If you save API responses under `data/`, you can replay them offline on a later run.
+**The two parcel notebooks run with no API key.** Their inputs *and* their cached API responses ship with the repo, so on a fresh clone you can open either one, Run All, and get the complete output bundle without a key and without spending credits. They use a single `cached_or_live()` helper: it reads the cached response if present, otherwise calls the API and caches it. Set `REFRESH = True` in the Setup cell — or change `STUDY_DATE`, `GRANULARITY_M`, `BUFFER_M`, or the date window, which all change the cache filenames — to force fresh, billable calls.
+
+**The three point notebooks need a key and your own data.** The rest of `data/` is git-ignored and not shipped, so bring your own input CSV (each notebook's Setup section documents the expected columns and path). They split each API step into paired `Step Na` (live) / `Step Nb` (cached) cells — run whichever you want, and save responses under `data/` to replay offline later.
+
+One caveat on the offline path: `parcel_site_due_diligence.ipynb` computes an optional **citywide percentile** from `data/heatmaps/heatmap_san_jose_2024-07-15_live.geojson`, a 6.8 MB citywide capture that is *not* shipped. Without it that one statistic is skipped and the notebook prints a note; everything else runs normally. Run any of the three point notebooks once to generate it.
 
 ## Coverage and date range
 
@@ -93,6 +124,18 @@ outputs/
   real_estate_<STUDY_DATE>/
     portfolio_evaluation.csv     # per-property scoring + tiers
     real_estate_report.pdf       # client-deck slide pack
+    maps/*.html
+  parcel_<slug>_<STUDY_DATE>/
+    parcel_due_diligence_report.pdf       # the client deliverable
+    parcel_evaluation.csv                 # every measured value, one row
+    findings.csv                          # threshold / measurement / verdict / program
+    heat_intelligence_<slug>_<date>.pdf   # narrative companion
+    maps/*.html
+  parcel_portfolio_<city>_<STUDY_DATE>/
+    parcel_screening_report.pdf           # ranked committee pack
+    parcel_screening.csv                  # one row per parcel, °F and °C columns
+    findings.csv                          # per-parcel, with an explicit `adverse` flag
+    heat_intelligence_<lead_parcel>_<date>.pdf
     maps/*.html
 ```
 
