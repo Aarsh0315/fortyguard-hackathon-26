@@ -315,6 +315,8 @@ It is a humidity-sensitivity curve at a fixed temperature, not a diurnal forecas
 
 On a hot day the artifact gets extreme: for 2026-08-03, a 37.2 °C anchor paired with 84% small-hours humidity produces a heat index of **159 °F (70 °C) at 05:00** — well past the end of the NWS table. The multi-parcel notebook scales its chart axis to the physically meaningful series and lets that curve clip off-scale with a note, rather than letting one artifact compress every real curve into the bottom of the panel.
 
+**`env_params` is also coarser than a parcel.** It resolves on a weather grid coarser than parcels within one district are apart — in the bundled screening run, two parcels **1.36 km apart return byte-identical arrays** (same apparent temperature, wet-bulb, humidity, air quality). Only heat index differs between them, and only because each parcel is sent its own `temperature` anchor from the heat layer. Use these curves to characterise the district; use the heatmap layers, which resolve at `GRANULARITY_M`, to discriminate between sites. The multi-parcel notebook detects identical responses and warns explicitly.
+
 ### Units
 
 The API returns Celsius throughout. [`parcel_portfolio_heat_screening.ipynb`](notebooks/use_cases/parcel_portfolio_heat_screening.ipynb) displays **Fahrenheit with Celsius in brackets** — `97.4 °F (36.3 °C)` — via three helpers set once in its Setup cell (`tf()` to format, `c2f()` to convert for plotting, `add_celsius_axis()` to mirror a chart axis). Conversion happens only at display time, so stored values, CSV columns, and threshold comparisons all stay in the API's native Celsius and cannot drift from what is shown.

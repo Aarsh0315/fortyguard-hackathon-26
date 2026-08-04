@@ -39,6 +39,10 @@ These are the ones to demo to a client on their own sites. They are not further 
 
 It is a humidity-sensitivity curve at a fixed temperature, not a diurnal forecast. Counting "hours above a threshold" from it counts night-time artifacts as daytime exposure. Both parcel notebooks compare against published thresholds only at the **hot hour** (where `apparent_temperature_celsius` peaks) and take all duration figures from the measured `exceedance` layer instead. The multi-parcel notebook additionally scales its chart axis to the meaningful series so the artifact clips off-scale rather than flattening every real curve. **The same caveat applies to the `hours_above_sla` column in the real-estate notebook**, which is computed from this series.
 
+**A second `env_params` limit: it is coarser than your parcels.** The endpoint resolves on a weather grid coarser than parcels within one district are apart. In the bundled screening run, two parcels **1.36 km apart return byte-identical parameter arrays** — same apparent temperature, wet-bulb, humidity, and air quality — because they share a grid cell. The only column that still varies between them is heat index, and it varies *solely* because each parcel supplies its own `temperature` anchor from the heat layer; it is a re-expression of the heatmap, not an independent measurement at that point.
+
+So use the comfort curves to characterise **the district**, not to discriminate between parcels inside it. The multi-parcel notebook hashes each response and prints an explicit warning when two parcels come back identical. Parcel-to-parcel ranking rests on the heatmap layers, which resolve at `GRANULARITY_M` and genuinely do vary per site.
+
 ## The shared workflow (point notebooks)
 
 The three point-based notebooks walk through the same five stages — only the input shape and the final action artifact change:
