@@ -1,3 +1,7 @@
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  "http://127.0.0.1:8000";
+
 import { useEffect, useState } from "react";
 import "./App.css";
 
@@ -153,25 +157,23 @@ function App() {
           fortyGuardResponse,
         ] = await Promise.all([
 
-          fetch(
-            "http://127.0.0.1:8000/api/heat-risk"
-          ),
+          fetch(`${API_BASE_URL}/api/heat-risk`),
 
           fetch(
-            `http://127.0.0.1:8000/api/heat-risk/${selectedCity}`
-          ),
+  `${API_BASE_URL}/api/heat-risk/${selectedCity}`
+),
 
           fetch(
-            `http://127.0.0.1:8000/api/heat-risk/${selectedCity}/insights`
-          ),
+  `${API_BASE_URL}/api/heat-risk/${selectedCity}/insights`
+),
 
           fetch(
-            `http://127.0.0.1:8000/api/heat-risk/${selectedCity}/trend`
-          ),
+  `${API_BASE_URL}/api/heat-risk/${selectedCity}/trend`
+),
 
           fetch(
-            "http://127.0.0.1:8000/api/fortyguard-analysis"
-          ),
+  `${API_BASE_URL}/api/fortyguard-analysis`
+),
 
         ]);
 
