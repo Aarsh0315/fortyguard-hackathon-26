@@ -1,0 +1,13 @@
+{
+  "activity_id": "0ddfd879-e063-48de-bf55-5e5162270bfa",
+  "result": {
+    "map_data": {
+      "type": "FeatureCollection",
+      "features": []
+    },
+    "stats_data": {
+      "activity_id": "0ddfd879-e063-48de-bf55-5e5162270bfa",
+      "n_cells": 0
+    }
+  }
+}
