@@ -1,7 +1,7 @@
 {
   "functions": {
-    "api/index.py": {
-      "includeFiles": "data/**"
+    "backend/main.py": {
+      "includeFiles": "data/city_heat_risk_report.csv"
     }
   }
 }
