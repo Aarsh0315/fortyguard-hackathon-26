@@ -1,4 +1,11 @@
+## Hackathon Declaration
+
+This project was built for FortyGuard Hackathon'26 using the official FortyGuard hackathon repository/template as the starting boilerplate.
+
+The original FortyGuard client, notebooks, examples, and supporting boilerplate were provided as part of the hackathon starter repository. HeatSafe AI is our original application layer built on top of the provided FortyGuard infrastructure, including the heat-risk analysis, AI interpretation, user-facing dashboard, visualizations, recommendations, and city comparison experience.
+
 # Temperature API Quickstart
+
 
 A Python + Jupyter sandbox for the [FortyGuard tOS Enterprise API](https://api.fortyguard.com). Drop in your API key and run a notebook — you'll get a heatmap, a heat-intelligence PDF, or an environmental-parameter time series in minutes.
 
