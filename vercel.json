@@ -1,11 +1,7 @@
 {
   "functions": {
     "api/index.py": {
-      "includeFiles": [
-        "data/**",
-        "backend/**",
-        "fortyguard/**"
-      ]
+      "includeFiles": "data/**"
     }
   }
 }
