@@ -1,2 +1,13 @@
+[project]
+name = "heatsafe-api"
+version = "1.0.0"
+description = "HeatSafe AI FastAPI backend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pandas"
+]
+
 [tool.vercel]
 entrypoint = "backend.main:app"
