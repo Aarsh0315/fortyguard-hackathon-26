@@ -1,6 +1,4 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  "http://127.0.0.1:8000";
+const API_BASE_URL = "https://heatsafe-api.vercel.app";
 
 import { useEffect, useState } from "react";
 import "./App.css";
@@ -14,6 +12,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+
+
 
 
 function App() {
@@ -157,21 +157,21 @@ function App() {
           fortyGuardResponse,
         ] = await Promise.all([
 
-          fetch(`${API_BASE_URL}/api/heat-risk`),
+   fetch(`${API_BASE_URL}/api/heat-risk`),
 
-          fetch(
+fetch(
   `${API_BASE_URL}/api/heat-risk/${selectedCity}`
 ),
 
-          fetch(
+fetch(
   `${API_BASE_URL}/api/heat-risk/${selectedCity}/insights`
 ),
 
-          fetch(
+fetch(
   `${API_BASE_URL}/api/heat-risk/${selectedCity}/trend`
 ),
 
-          fetch(
+fetch(
   `${API_BASE_URL}/api/fortyguard-analysis`
 ),
 
