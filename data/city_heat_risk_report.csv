@@ -1,0 +1,5 @@
+city,heat_index_celsius,apparent_temperature_celsius,relative_humidity_percent,wet_bulb_temperature_celsius,risk_score,risk_level,main_factors,recommendation
+Bengaluru,44.64,26.12,78.31,20.76,6,HIGH,"very high heat index, very high humidity","Limit prolonged outdoor exposure, stay hydrated, take frequent breaks in shaded or cool areas, and check on elderly people and other vulnerable groups."
+Mumbai,39.06,34.25,65.9,25.02,6,HIGH,"high heat index, high humidity, elevated wet-bulb temperature","Limit prolonged outdoor exposure, stay hydrated, take frequent breaks in shaded or cool areas, and check on elderly people and other vulnerable groups."
+Pune,39.44,29.15,63.45,21.82,5,MODERATE,"high heat index, high humidity",Stay hydrated and avoid prolonged exposure during the hottest part of the day.
+Delhi,30.8,33.37,28.03,20.45,1,LOW,no major heat indicators detected,Normal precautions are recommended. Continue monitoring local temperature conditions.
